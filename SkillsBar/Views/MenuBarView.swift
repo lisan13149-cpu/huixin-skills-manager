@@ -14,7 +14,7 @@ struct MenuBarView: View {
     @State private var selectedSkill: Skill?
     @State private var selectedAgent: Agent?
     @State private var selectedPlugin: Plugin?
-    @AppStorage("selectedTab") private var selectedTab: SkillStore.SkillTab = .claudeCode
+    @AppStorage("selectedTab") private var selectedTab: SkillStore.SkillTab = .collections
     @AppStorage(AppPreferenceKey.preferredAppearance) private var preferredAppearanceRaw = AppAppearance.system.rawValue
     @AppStorage(AppPreferenceKey.showsWhatsNewSection) private var showsWhatsNewSection = true
     @AppStorage(AppPreferenceKey.preferredEditor) private var preferredEditorRaw = ExternalEditor.visualStudioCode.rawValue
@@ -328,7 +328,7 @@ struct MenuBarView: View {
 
             // Tabs card
             HStack(spacing: 4) {
-                ForEach(SkillStore.SkillTab.allCases) { tab in
+                ForEach([SkillStore.SkillTab.collections, .claudeCode, .codex, .pi, .workbuddy]) { tab in
                     tabButton(tab)
                 }
             }
@@ -363,7 +363,7 @@ struct MenuBarView: View {
             .clipShape(RoundedRectangle(cornerRadius: cardRadius))
             .padding(.horizontal, 12)
 
-            searchFilterChips
+            if selectedTab != .collections { searchFilterChips }
 
             // Content list
             contentListView
@@ -663,7 +663,7 @@ struct MenuBarView: View {
 
     private var contentListView: some View {
         if selectedTab == .collections {
-            return AnyView(collectionsListView)
+            return AnyView(WorkflowLibraryView(store: store, onSelectSkill: { selectedSkill = $0 }))
         }
 
         let recentSkills = showsWhatsNewSection ? recentSkills(for: selectedTab) : []
@@ -1034,23 +1034,23 @@ struct MenuBarView: View {
             }
             Divider()
             if store.collections.isEmpty {
-                Button("New Collection…") {
+                Button("新建分类…") {
                     startCreatingCollection(for: skill)
                 }
                 Divider()
             } else {
-                Menu("收藏夹") {
+                Menu("我的分类") {
                     ForEach(store.orderedCollections) { collection in
                         Button(
                             store.isSkill(skill, in: collection)
-                                ? "Remove from \(collection.name)"
-                                : "Add to \(collection.name)"
+                                ? "移出 \(collection.name)"
+                                : "加入 \(collection.name)"
                         ) {
                             store.toggleSkill(skill, in: collection)
                         }
                     }
                     Divider()
-                    Button("New Collection…") {
+                    Button("新建分类…") {
                         startCreatingCollection(for: skill)
                     }
                 }
@@ -1529,9 +1529,9 @@ struct MenuBarView: View {
         showAbout = false
         showUsageStats = false
         selectedTab = .collections
-        showingNewCollectionForm = true
-        newCollectionName = skill.map { "\($0.displayName)" } ?? "新建收藏夹"
-        pendingCollectionSkillPath = skill?.path
+        let collection = store.createCollection(named: skill?.displayName ?? "新分类", including: skill)
+        UserDefaults.standard.set("custom:" + collection.id.uuidString, forKey: "workflowLibrarySelection")
+        store.searchText = ""
     }
 
     private func resetCollectionComposer() {
@@ -1736,7 +1736,7 @@ struct MenuBarView: View {
         return Button { selectedTab = tab } label: {
             HStack(spacing: 4) {
                 // Four tabs share 520pt, so labels shrink to fit rather than wrap.
-                Text(tab.rawValue)
+                Text(tab.displayTitle)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -1856,7 +1856,7 @@ struct MenuBarView: View {
     private var searchPlaceholder: String {
         switch selectedTab {
         case .collections:
-            return "搜索收藏夹…"
+            return "搜索中文技能名、原始名称或用途…"
         case .claudeCode:
             return "搜索技能名称、说明或所属工具…"
         case .codex:
@@ -2060,13 +2060,7 @@ struct MenuBarView: View {
     private var flatVisibleItems: [ListItem] {
         var items: [ListItem] = []
         if selectedTab == .collections {
-            for resolvedCollection in store.resolvedCollections(searchText: store.searchText) {
-                let sectionID = collectionSectionID(for: resolvedCollection.collection)
-                if !isSectionCollapsed(sectionID) {
-                    items.append(contentsOf: resolvedCollection.skills.map { .skill($0) })
-                }
-            }
-            return items
+            return [] // WorkflowLibraryView handles its own controls and focus.
         }
 
         let recentSkills = showsWhatsNewSection ? recentSkills(for: selectedTab) : []
@@ -2188,11 +2182,11 @@ struct MenuBarView: View {
             }
             return handleBackNavigation() ? nil : event
         case 125: // Down arrow
-            guard isShowingMainList else { return event }
+            guard isShowingMainList, selectedTab != .collections else { return event }
             moveHighlight(by: 1)
             return nil
         case 126: // Up arrow
-            guard isShowingMainList else { return event }
+            guard isShowingMainList, selectedTab != .collections else { return event }
             moveHighlight(by: -1)
             return nil
         case 36: // Return
@@ -2445,7 +2439,8 @@ struct MenuBarView: View {
         selectedAgent = nil
         selectedPlugin = nil
         selectedTab = .collections
-        store.searchText = collection.name
+        UserDefaults.standard.set("custom:" + collection.id.uuidString, forKey: "workflowLibrarySelection")
+        store.searchText = ""
     }
 
     private func selectProjectFromTool(_ project: ProjectSkillRoot) {

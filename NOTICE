@@ -8,7 +8,8 @@ Copyright 2026 Aman Mittal
 Licensed under the Apache License, Version 2.0. See licenses/SkillsBar-Apache-2.0.txt. The MIT license in LICENSE applies to original additions and modifications.
 
 本次修改包括：Gemini / Grok Bot 目录适配、WorkBuddy 来源、中文技能名显示、
-中文搜索、760点宽面板、多行说明解析修复、独立应用标识与中文说明。
+中文搜索、760点宽面板、多行说明解析修复、独立应用标识与中文说明；
+工作流自动分类、手动归类、自定义分类、跨来源链接去重及分类结果缓存。
 本项目不代表上游作者，不暗示其为中文增强版背书。
 
 Also thanks to the earlier SkillsBar project by alberduris and the CodexBar

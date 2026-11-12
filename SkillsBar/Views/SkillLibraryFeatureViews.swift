@@ -602,3 +602,219 @@ private func severityColor(_ severity: SkillHealthSeverity) -> Color {
         return .blue
     }
 }
+
+
+/// Workflow categories are local display preferences; skill files stay untouched.
+struct WorkflowLibraryView: View {
+    @ObservedObject var store: SkillStore
+    let onSelectSkill: (Skill) -> Void
+    @AppStorage("workflowLibrarySelection") private var selection = "all"
+    @State private var source = "all"
+    @State private var categoryName = ""
+    @State private var isAddingSkills = false
+
+    private var skills: [Skill] { store.workflowSkills(sourceGroup: source) }
+    private var selectedCollection: SkillCollection? {
+        store.collections.first { "custom:" + $0.id.uuidString == selection }
+    }
+    private var selectedWorkflow: WorkflowCategory? { WorkflowCategory(rawValue: selection) }
+    private var filteredSkills: [Skill] {
+        let query = store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return skills.filter { skill in
+            let inCategory: Bool
+            if let collection = selectedCollection {
+                inCategory = isAddingSkills || store.workflowContains(collection, skill: skill)
+            } else if let workflow = selectedWorkflow {
+                inCategory = store.workflowCategory(for: skill) == workflow
+            } else {
+                inCategory = true
+            }
+            return inCategory && (query.isEmpty || "\(skill.displayName) \(skill.name) \(skill.description)".lowercased().contains(query))
+        }
+    }
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            sidebar
+                .frame(width: 176)
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                header
+                Divider()
+                if filteredSkills.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "tray").font(.system(size: 28)).foregroundStyle(.tertiary)
+                        Text(store.searchText.isEmpty ? "这个分类暂时没有技能" : "没有匹配的技能")
+                        if selectedCollection != nil && !isAddingSkills {
+                            Button("从技能库添加") { isAddingSkills = true }
+                        }
+                    }
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(filteredSkills) { skill in skillCard(skill) }
+                        }.padding(.trailing, 3)
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(height: 490)
+        .background(Color.primary.opacity(0.035))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 12)
+        .onChange(of: selection) { _, _ in
+            isAddingSkills = selectedCollection?.skillPaths.isEmpty ?? false
+            categoryName = selectedCollection?.name ?? ""
+        }
+    }
+    private var sidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 5) {
+                categoryButton("全部技能", icon: "square.grid.2x2", id: "all", count: skills.count)
+                sectionLabel("按工作流自动归类")
+                ForEach(WorkflowCategory.allCases) { category in
+                    categoryButton(category.title, icon: category.icon, id: category.rawValue,
+                                   count: skills.filter { store.workflowCategory(for: $0) == category }.count)
+                }
+                HStack {
+                    sectionLabel("我的分类")
+                    Spacer()
+                    Button(action: createCategory) {
+                        Image(systemName: "plus.circle.fill").foregroundStyle(Color.accentColor)
+                    }.buttonStyle(.plain).help("新建自定义分类")
+                }
+                ForEach(store.orderedCollections) { collection in
+                    categoryButton(collection.name, icon: "folder", id: "custom:" + collection.id.uuidString,
+                                   count: skills.filter { store.workflowContains(collection, skill: $0) }.count)
+                }
+                if store.collections.isEmpty {
+                    Button("＋ 新建分类", action: createCategory)
+                        .font(.system(size: 12)).buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                }
+            }.padding(10)
+        }
+    }
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            .padding(.top, 10).padding(.bottom, 3).padding(.leading, 6)
+    }
+    private func categoryButton(_ title: String, icon: String, id: String, count: Int) -> some View {
+        Button { selection = id } label: {
+            HStack(spacing: 7) {
+                Image(systemName: icon).frame(width: 15)
+                Text(title).lineLimit(1)
+                Spacer(minLength: 2)
+                Text("\(count)").font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            .font(.system(size: 12, weight: selection == id ? .semibold : .regular))
+            .padding(.horizontal, 8).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selection == id ? Color.accentColor.opacity(0.13) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if let collection = selectedCollection {
+                    TextField("分类名称", text: $categoryName)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { renameCategory(collection) }
+                    Button("保存") { renameCategory(collection) }.disabled(categoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Menu {
+                        Button("删除分类（保留技能）", role: .destructive) {
+                            store.deleteCollection(collection); selection = "all"
+                        }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).fixedSize()
+                } else {
+                    Text(selectedWorkflow?.title ?? "全部技能").font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Text("\(filteredSkills.count) 项").foregroundStyle(.secondary).font(.system(size: 12))
+                }
+            }
+            Text(selectedCollection == nil ? (selectedWorkflow?.steps ?? "按用途找技能，也可以建立自己的分类") : (isAddingSkills ? "勾选要加入的技能，支持跨来源选择" : "一个技能可以加入多个自定义分类"))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack {
+                Menu {
+                    Button("全部来源") { source = "all" }
+                    ForEach(["Gemini", "Codex", "Grok Bot", "WorkBuddy"], id: \.self) { title in
+                        Button(title) { source = title }
+                    }
+                } label: { Label(source == "all" ? "全部来源" : source, systemImage: "line.3.horizontal.decrease.circle") }
+                .menuStyle(.borderlessButton).fixedSize()
+                Spacer()
+                if selectedCollection != nil {
+                    Button(isAddingSkills ? "完成添加" : "添加技能") { isAddingSkills.toggle() }
+                } else {
+                    Text("本地自动分类 · 可手动调整").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+            }.font(.system(size: 12))
+        }
+    }
+    private func skillCard(_ skill: Skill) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            if let collection = selectedCollection, isAddingSkills {
+                Button { store.toggleWorkflowMembership(skill, in: collection) } label: {
+                    Image(systemName: store.workflowContains(collection, skill: skill) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(store.workflowContains(collection, skill: skill) ? Color.accentColor : Color.secondary)
+                }.buttonStyle(.plain).padding(.top, 3)
+            }
+            Button { onSelectSkill(skill) } label: {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(skill.displayName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(skill.shortDescription).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+                    HStack(spacing: 6) {
+                        Text(skill.source.groupTitle)
+                        Text("·")
+                        Text(store.workflowCategory(for: skill).title)
+                        if store.hasWorkflowOverride(skill) { Text("手动") }
+                    }.font(.system(size: 10)).foregroundStyle(.tertiary)
+                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            Menu {
+                Menu("调整工作流归类") {
+                    ForEach(WorkflowCategory.allCases) { category in
+                        Button { store.setWorkflowCategory(category, for: skill) } label: {
+                            Label(category.title, systemImage: store.workflowCategory(for: skill) == category ? "checkmark" : category.icon)
+                        }
+                    }
+                    Divider()
+                    Button("恢复自动归类") { store.setWorkflowCategory(nil, for: skill) }
+                }
+                Menu("加入或移出我的分类") {
+                    ForEach(store.orderedCollections) { collection in
+                        Button { store.toggleWorkflowMembership(skill, in: collection) } label: {
+                            Label(collection.name, systemImage: store.workflowContains(collection, skill: skill) ? "checkmark" : "folder")
+                        }
+                    }
+                    Divider()
+                    Button("新建分类并加入") { createCategory(including: skill) }
+                }
+                if let collection = selectedCollection {
+                    Button("移出当前分类") { store.toggleWorkflowMembership(skill, in: collection) }
+                }
+            } label: { Image(systemName: "ellipsis.circle").foregroundStyle(.secondary) }
+            .menuStyle(.borderlessButton).fixedSize().help("管理技能分类")
+        }
+        .padding(12).background(Color.primary.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+    private func createCategory() { createCategory(including: nil) }
+    private func createCategory(including skill: Skill?) {
+        let collection = store.createCollection(named: "新分类", including: skill)
+        selection = "custom:" + collection.id.uuidString
+        categoryName = collection.name
+        isAddingSkills = true
+    }
+    private func renameCategory(_ collection: SkillCollection) {
+        store.renameCollection(collection, to: categoryName)
+        categoryName = store.collections.first { $0.id == collection.id }?.name ?? categoryName
+    }
+}

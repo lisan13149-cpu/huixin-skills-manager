@@ -23,6 +23,12 @@ final class SkillStore: ObservableObject {
     @Published var groups: [SkillGroup] = []
     @Published var agentGroups: [AgentGroup] = []
     @Published var plugins: [Plugin] = []
+    @Published private(set) var workflowOverrides: [String: String] = [:]
+    private var workflowResolvedCategories: [String: WorkflowCategory] = [:]
+    private var workflowIdentityCache: [String: String] = [:]
+    private var workflowSkillCache: [String: [Skill]] = [:]
+    private let workflowDefaults: UserDefaults
+
     @Published var collections: [SkillCollection] = []
     @Published var projectSkillRoots: [ProjectSkillRoot] = []
     @Published var lastRefreshDate: Date?
@@ -57,7 +63,9 @@ final class SkillStore: ObservableObject {
     private static let projectSkillRootsKey = "projectSkillRoots"
     private static let watchedRefreshDelay: UInt64 = 1_500_000_000
 
-    init(usageTracker: UsageTracker? = nil) {
+    init(usageTracker: UsageTracker? = nil, workflowDefaults: UserDefaults = .standard) {
+        self.workflowDefaults = workflowDefaults
+        self.workflowOverrides = workflowDefaults.dictionary(forKey: "workflowCategoryOverrides") as? [String: String] ?? [:]
         self.usageTracker = usageTracker
         if let raw = UserDefaults.standard.string(forKey: Self.sortKey),
            let saved = SkillSortOption(rawValue: raw) {
@@ -83,7 +91,7 @@ final class SkillStore: ObservableObject {
             projectPinnedSkillPaths = savedProjectPins
         }
 
-        if let savedData = UserDefaults.standard.data(forKey: Self.collectionsKey),
+        if let savedData = workflowDefaults.data(forKey: Self.collectionsKey),
            let savedCollections = try? JSONDecoder().decode([SkillCollection].self, from: savedData) {
             collections = savedCollections
         }
@@ -106,7 +114,7 @@ final class SkillStore: ObservableObject {
 
     private func persistCollections() {
         let encoded = try? JSONEncoder().encode(collections)
-        UserDefaults.standard.set(encoded, forKey: Self.collectionsKey)
+        workflowDefaults.set(encoded, forKey: Self.collectionsKey)
     }
 
     private func persistProjectSkillRoots() {
@@ -1154,7 +1162,7 @@ final class SkillStore: ObservableObject {
         case .workbuddy:
             return allGroups.filter { $0.id == "workbuddy" }.reduce(0) { $0 + $1.totalCount }
         case .collections:
-            return collections.count
+            return workflowSkills().count
         }
     }
 
@@ -1454,6 +1462,8 @@ final class SkillStore: ObservableObject {
 
         var id: String { rawValue }
 
+        var displayTitle: String { self == .collections ? "工作流分类" : rawValue }
+
         /// Group id produced by `buildGroups` for this tab, or nil when the tab is not skill-backed.
         var groupID: String? {
             switch self {
@@ -1490,6 +1500,9 @@ final class SkillStore: ObservableObject {
 
             guard let self else { return }
 
+            self.workflowResolvedCategories.removeAll()
+            self.workflowIdentityCache.removeAll()
+            self.workflowSkillCache.removeAll()
             self.lastScannedSkills = scanned.skills
             self.lastScannedAgents = scanned.agents
             self.groups = self.buildGroups(from: scanned.skills)
@@ -2061,5 +2074,57 @@ final class SkillStore: ObservableObject {
 
         if sections.isEmpty { return [] }
         return [AgentGroup(id: "agents", title: "助手", sections: sections)]
+    }
+}
+
+
+extension SkillStore {
+    static func workflowIdentity(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+    private func cachedWorkflowIdentity(_ path: String) -> String {
+        if let value = workflowIdentityCache[path] { return value }
+        let value = Self.workflowIdentity(path)
+        workflowIdentityCache[path] = value
+        return value
+    }
+    func workflowCategory(for skill: Skill) -> WorkflowCategory {
+        if let cached = workflowResolvedCategories[skill.path] { return cached }
+        let category = workflowOverrides[cachedWorkflowIdentity(skill.path)].flatMap(WorkflowCategory.init(rawValue:)) ?? WorkflowCategory.suggest(for: skill)
+        workflowResolvedCategories[skill.path] = category
+        return category
+    }
+    func hasWorkflowOverride(_ skill: Skill) -> Bool {
+        workflowOverrides[cachedWorkflowIdentity(skill.path)] != nil
+    }
+    func setWorkflowCategory(_ category: WorkflowCategory?, for skill: Skill) {
+        let key = cachedWorkflowIdentity(skill.path)
+        workflowResolvedCategories.removeAll()
+        workflowOverrides[key] = category?.rawValue
+        workflowDefaults.set(workflowOverrides, forKey: "workflowCategoryOverrides")
+    }
+    func workflowContains(_ collection: SkillCollection, skill: Skill) -> Bool {
+        let identity = cachedWorkflowIdentity(skill.path)
+        return collection.skillPaths.contains { cachedWorkflowIdentity($0) == identity }
+    }
+    func toggleWorkflowMembership(_ skill: Skill, in collection: SkillCollection) {
+        guard let index = collections.firstIndex(where: { $0.id == collection.id }) else { return }
+        let identity = cachedWorkflowIdentity(skill.path)
+        if workflowContains(collections[index], skill: skill) {
+            collections[index].skillPaths.removeAll { cachedWorkflowIdentity($0) == identity }
+        } else {
+            collections[index].skillPaths.append(skill.path)
+        }
+        collections[index].updatedAt = Date()
+        persistCollections()
+    }
+    func workflowSkills(sourceGroup: String = "all") -> [Skill] {
+        if let cached = workflowSkillCache[sourceGroup] { return cached }
+        var seen = Set<String>()
+        let result = allSkills.filter {
+            (sourceGroup == "all" || $0.source.groupTitle == sourceGroup) && seen.insert(cachedWorkflowIdentity($0.path)).inserted
+        }
+        workflowSkillCache[sourceGroup] = result
+        return result
     }
 }

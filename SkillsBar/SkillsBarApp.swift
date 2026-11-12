@@ -24,8 +24,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let index = CommandLine.arguments.firstIndex(of: "--preview-source"), CommandLine.arguments.indices.contains(index + 1),
-           ["Gemini", "Codex", "Grok Bot", "WorkBuddy"].contains(CommandLine.arguments[index + 1]) {
+           ["Gemini", "Codex", "Grok Bot", "WorkBuddy", "收藏夹"].contains(CommandLine.arguments[index + 1]) {
             UserDefaults.standard.set(CommandLine.arguments[index + 1], forKey: "selectedTab")
+        }
+        if !UserDefaults.standard.bool(forKey: "hasOpenedWorkflowLibrary") {
+            UserDefaults.standard.set("收藏夹", forKey: "selectedTab")
+            UserDefaults.standard.set(true, forKey: "hasOpenedWorkflowLibrary")
         }
         // Prevent Settings window from appearing on launch
         NSApp.setActivationPolicy(.accessory)
