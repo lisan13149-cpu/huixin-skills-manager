@@ -1,0 +1,13 @@
+.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.mobileprovision
+private/
+local-catalog*.json

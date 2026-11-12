@@ -1,0 +1,333 @@
+import SwiftUI
+
+struct AboutView: View {
+    @ObservedObject var skillStore: SkillStore
+    let onBack: () -> Void
+    private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.11.1"
+    private let heroCornerRadius: CGFloat = 22
+    private let sectionCornerRadius: CGFloat = 16
+    private let fileManager = FileManager.default
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: onBack) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("返回")
+                            .font(.system(size: 14))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 14) {
+                    heroCard
+
+                    infoSection(icon: "square.grid.2x2", title: "技能概览") {
+                        HStack(spacing: 10) {
+                            statPill(value: "\(skillStore.totalSkillCount)", label: "技能")
+                            statPill(value: "\(skillStore.plugins.count)", label: "插件")
+                            statPill(value: "\(agentCount)", label: "助手")
+                            statPill(value: "\(skillStore.collections.count)", label: "收藏夹")
+                        }
+                    }
+
+                    infoSection(icon: "folder", title: "Watched Paths") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(watchedPaths.enumerated()), id: \.element.displayPath) { index, path in
+                                    directoryRow(path.displayPath)
+
+                                    if index < watchedPaths.count - 1 {
+                                        sectionDivider
+                                    }
+                                }
+                            }
+
+                            Menu {
+                                ForEach(watchedPaths, id: \.displayPath) { path in
+                                    Button(path.displayPath) {
+                                        revealInFinder(path.resolvedURL)
+                                    }
+                                }
+                            } label: {
+                                Label("在访达中显示", systemImage: "folder.badge.gearshape")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.blue)
+                            }
+                            .menuStyle(.borderlessButton)
+                            .help("Reveal watched paths in Finder")
+                        }
+                    }
+
+                    infoSection(icon: "keyboard", title: "快捷键") {
+                        Text("Option + Shift + S")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(.primary)
+                    }
+
+                    footerLinks
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 18)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+        .frame(width: SkillsBarLayout.windowWidth, height: SkillsBarLayout.aboutHeight)
+    }
+
+    private var heroCard: some View {
+        VStack(spacing: 16) {
+            if let icon = NSApp.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 96, height: 96)
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
+                    .shadow(color: Color.blue.opacity(0.14), radius: 18, y: 8)
+            }
+
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    VStack(spacing: 6) { Text("汇芯技能管家"); Text("袁六伟 · 台州汇芯\n基于 Aman Mittal 的 SkillsBar 开源项目").font(.caption).foregroundStyle(.secondary) }
+                        .font(.system(size: 28, weight: .bold))
+
+                    Text("v\(appVersion)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.65))
+                        .clipShape(Capsule())
+                }
+
+                Text("在菜单栏统一查看 Gemini、Codex、Grok Bot、WorkBuddy 技能。中文名称只用于展示，原始技能文件与调用名称保持兼容。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+                    .lineSpacing(2)
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.blue.opacity(0.14),
+                    Color.blue.opacity(0.05)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: heroCornerRadius)
+                .stroke(Color.blue.opacity(0.10), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: heroCornerRadius))
+    }
+
+    private var agentCount: Int {
+        skillStore.agentGroups.reduce(0) { $0 + $1.totalCount }
+    }
+
+    private var watchedPaths: [(displayPath: String, resolvedURL: URL)] {
+        let homeURL = fileManager.homeDirectoryForCurrentUser
+        var paths = [
+            ("~/.claude/skills/", homeURL.appendingPathComponent(".claude/skills", isDirectory: true)),
+            ("~/.claude/plugins/", homeURL.appendingPathComponent(".claude/plugins", isDirectory: true)),
+            ("~/.claude/agents/", homeURL.appendingPathComponent(".claude/agents", isDirectory: true)),
+            ("~/.claude/projects/", homeURL.appendingPathComponent(".claude/projects", isDirectory: true)),
+            ("~/.codex/skills/", homeURL.appendingPathComponent(".codex/skills", isDirectory: true)),
+            ("~/.codex/plugins/cache/", homeURL.appendingPathComponent(".codex/plugins/cache", isDirectory: true)),
+            ("~/.codex/history.jsonl", homeURL.appendingPathComponent(".codex/history.jsonl")),
+            ("~/.codex/sessions/", homeURL.appendingPathComponent(".codex/sessions", isDirectory: true)),
+            ("~/.pi/agent/skills/", homeURL.appendingPathComponent(".pi/agent/skills", isDirectory: true)),
+            ("~/.pi/agent/sessions/", homeURL.appendingPathComponent(".pi/agent/sessions", isDirectory: true)),
+            ("~/.agents/skills/", homeURL.appendingPathComponent(".agents/skills", isDirectory: true))
+        ]
+
+        for root in skillStore.enabledProjectSkillRoots {
+            for skillsPath in root.skillDirectoryPaths {
+                paths.append(
+                    (
+                        displayProjectRelativePath(skillsPath),
+                        URL(fileURLWithPath: skillsPath, isDirectory: true)
+                    )
+                )
+            }
+            paths.append(
+                (
+                    "\(displayProjectRelativePath(root.claudeAgentsPath))",
+                    URL(fileURLWithPath: root.claudeAgentsPath, isDirectory: true)
+                )
+            )
+
+            for instructionPath in root.instructionCandidatePaths {
+                paths.append(
+                    (
+                        displayProjectRelativePath(instructionPath),
+                        URL(fileURLWithPath: instructionPath)
+                    )
+                )
+            }
+        }
+
+        return paths
+    }
+
+    private func displayProjectRelativePath(_ path: String) -> String {
+        let homePath = fileManager.homeDirectoryForCurrentUser.path
+
+        if path.hasPrefix(homePath + "/") {
+            return "~" + path.dropFirst(homePath.count)
+        }
+
+        return path
+    }
+
+    private var footerLinks: some View {
+        HStack(spacing: 14) {
+            footerLink(
+                title: "GitHub",
+                systemImage: "link",
+                urlString: "https://github.com/sixwei2025/huixin-skills-manager"
+            )
+
+            footerSeparator
+
+            footerLink(
+                title: "amanhimself.dev",
+                systemImage: "globe",
+                urlString: "https://amanhimself.dev"
+            )
+
+            footerSeparator
+
+            footerLink(
+                title: "Aman Mittal",
+                systemImage: "person.crop.circle",
+                urlString: "https://amanhimself.dev"
+            )
+        }
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .background(Color.primary.opacity(0.05))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func infoSection<Content: View>(icon: String, title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text(title.uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+            }
+
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.05))
+        .overlay(
+            RoundedRectangle(cornerRadius: sectionCornerRadius)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: sectionCornerRadius))
+    }
+
+    private func statPill(value: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .foregroundStyle(.primary)
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func directoryRow(_ path: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(Color.blue.opacity(0.45))
+                .frame(width: 5, height: 5)
+                .padding(.top, 5)
+
+            Text(path)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func revealInFinder(_ url: URL) {
+        let targetURL = nearestExistingURL(from: url)
+        NSWorkspace.shared.activateFileViewerSelecting([targetURL])
+    }
+
+    private func nearestExistingURL(from url: URL) -> URL {
+        var candidate = url
+
+        while !fileManager.fileExists(atPath: candidate.path), candidate.path != "/" {
+            candidate.deleteLastPathComponent()
+        }
+
+        return candidate
+    }
+
+    private var footerSeparator: some View {
+        Circle()
+            .fill(Color.secondary.opacity(0.25))
+            .frame(width: 4, height: 4)
+    }
+
+    private var sectionDivider: some View {
+        Divider()
+            .overlay(Color.primary.opacity(0.05))
+            .padding(.leading, 15)
+    }
+
+    private func footerLink(title: String, systemImage: String, urlString: String) -> some View {
+        Button {
+            if let url = URL(string: urlString) {
+                NSWorkspace.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(title)
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+    }
+}

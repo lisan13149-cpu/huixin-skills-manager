@@ -1,0 +1,147 @@
+import SwiftUI
+
+/// Renders a skill source's mark. Claude Code and Codex ship image assets; Pi uses the
+/// built-in `pi` SF Symbol, so the two cases need different Image initializers.
+struct SkillSourceIcon: View {
+    let source: SkillSource
+    var size: CGFloat = 18
+
+    var body: some View {
+        if source.isCustomIcon {
+            Image(source.iconName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+        } else {
+            Image(systemName: source.iconName)
+                .font(.system(size: size * 0.78, weight: .semibold))
+                .frame(width: size, height: size)
+        }
+    }
+}
+
+struct SkillRowView: View {
+    let skill: Skill
+    let isPinned: Bool
+    var usageCount: Int? = nil
+    var showSourceBadge = false
+    var conflictSummary: SkillConflictSummary? = nil
+    @State private var isHovered = false
+
+    private var hoverColor: Color {
+        switch skill.source {
+        case .claudeCode: return Color(red: 0.85, green: 0.45, blue: 0.1)
+        case .codexCLI: return .purple
+        case .pi: return .pink
+        case .workbuddy: return .green
+        }
+    }
+
+    /// Short mark shown when rows from different harnesses share one list.
+    private var sourceBadgeText: String {
+        switch skill.source {
+        case .claudeCode: return "Gemini"
+        case .codexCLI: return "Codex"
+        case .pi: return "Grok Bot"
+        case .workbuddy: return "WorkBuddy"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SkillSourceIcon(source: skill.source)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(skill.displayName)
+                        .font(.system(size: 14, weight: .medium))
+                        .lineLimit(1)
+                    if showSourceBadge {
+                        Text(sourceBadgeText)
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(hoverColor.opacity(0.14))
+                            .foregroundStyle(hoverColor)
+                            .clipShape(Capsule())
+                    }
+                    if let projectName = skill.source.projectName {
+                        Text("项目")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.14))
+                            .foregroundStyle(.blue)
+                            .clipShape(Capsule())
+                        Text(projectName)
+                            .font(.system(size: 9, weight: .bold))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.14))
+                            .foregroundStyle(.blue)
+                            .clipShape(Capsule())
+                    }
+                    if let conflictSummary {
+                        Label(conflictSummary.label, systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .labelStyle(.titleAndIcon)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.14))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                            .help(conflictSummary.helpText + "\nRight-click for conflict actions.")
+                    }
+                    if skill.isNew {
+                        Text("新")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundStyle(.blue)
+                            .clipShape(Capsule())
+                    }
+                    if let count = usageCount, count > 0 {
+                        Text("\(count)x")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.15))
+                            .foregroundStyle(.green)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                if !skill.shortDescription.isEmpty {
+                    Text(skill.shortDescription)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer()
+
+            if isPinned {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.yellow)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(isHovered ? hoverColor.opacity(0.08) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}

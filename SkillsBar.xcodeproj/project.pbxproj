@@ -1,0 +1,497 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10001001 /* SkillsBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002001; };
+		A10001002 /* Skill.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002002; };
+		A10001003 /* SkillSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002003; };
+		A10001004 /* SkillGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002004; };
+		A10001005 /* FrontmatterParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002005; };
+		A10001006 /* SkillScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002006; };
+		A10001007 /* FSEventsWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002007; };
+		A10001008 /* SkillStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002008; };
+		A10001009 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002009; };
+		A10001010 /* SkillRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002010; };
+		A10001011 /* SkillDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002011; };
+		A10001012 /* SectionHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002012; };
+		A10001013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10002013; };
+		A10001014 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002015; };
+		A10001015 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002016; };
+		A10001016 /* Agent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002017; };
+		A10001017 /* AgentSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002018; };
+		A10001018 /* AgentGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002019; };
+		A10001019 /* AgentScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002020; };
+		A10001020 /* AgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002021; };
+		A10001021 /* AgentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002022; };
+		A10001022 /* SkillUsageStat.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002023; };
+		A10001023 /* UsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002024; };
+		A10001024 /* UsageStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002025; };
+		A10001025 /* SkillSortOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002026; };
+		A10001026 /* SkillCollection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002027; };
+		A10001027 /* SkillsBarLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002028; };
+		A10001028 /* Plugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002029; };
+		A10001029 /* PluginScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002030; };
+		A10001030 /* PluginRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002031; };
+		A10001031 /* PluginDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002032; };
+		A10001032 /* AppAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002033; };
+		A10001033 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002034; };
+		A10001034 /* LoginItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002035; };
+		A10001035 /* ProjectSkillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002036; };
+		A10001036 /* SkillLibraryFeatureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002037; };
+		A10001037 /* SkillLibraryFeatureViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002038; };
+		A10001038 /* ClaudePluginRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002039; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A10003001 /* SkillsBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkillsBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10002001 /* SkillsBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsBarApp.swift; sourceTree = "<group>"; };
+		A10002002 /* Skill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skill.swift; sourceTree = "<group>"; };
+		A10002003 /* SkillSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillSource.swift; sourceTree = "<group>"; };
+		A10002004 /* SkillGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillGroup.swift; sourceTree = "<group>"; };
+		A10002005 /* FrontmatterParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterParser.swift; sourceTree = "<group>"; };
+		A10002006 /* SkillScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillScanner.swift; sourceTree = "<group>"; };
+		A10002007 /* FSEventsWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FSEventsWatcher.swift; sourceTree = "<group>"; };
+		A10002008 /* SkillStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillStore.swift; sourceTree = "<group>"; };
+		A10002009 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		A10002010 /* SkillRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRowView.swift; sourceTree = "<group>"; };
+		A10002011 /* SkillDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillDetailView.swift; sourceTree = "<group>"; };
+		A10002012 /* SectionHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionHeaderView.swift; sourceTree = "<group>"; };
+		A10002013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A10002014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10002015 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		A10002016 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		A10002017 /* Agent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Agent.swift; sourceTree = "<group>"; };
+		A10002018 /* AgentSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSource.swift; sourceTree = "<group>"; };
+		A10002019 /* AgentGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentGroup.swift; sourceTree = "<group>"; };
+		A10002020 /* AgentScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentScanner.swift; sourceTree = "<group>"; };
+		A10002021 /* AgentRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowView.swift; sourceTree = "<group>"; };
+		A10002022 /* AgentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailView.swift; sourceTree = "<group>"; };
+		A10002023 /* SkillUsageStat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillUsageStat.swift; sourceTree = "<group>"; };
+		A10002024 /* UsageTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageTracker.swift; sourceTree = "<group>"; };
+		A10002025 /* UsageStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStatsView.swift; sourceTree = "<group>"; };
+		A10002026 /* SkillSortOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillSortOption.swift; sourceTree = "<group>"; };
+		A10002027 /* SkillCollection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillCollection.swift; sourceTree = "<group>"; };
+		A10002028 /* SkillsBarLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsBarLayout.swift; sourceTree = "<group>"; };
+		A10002029 /* Plugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Plugin.swift; sourceTree = "<group>"; };
+		A10002030 /* PluginScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginScanner.swift; sourceTree = "<group>"; };
+		A10002031 /* PluginRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginRowView.swift; sourceTree = "<group>"; };
+		A10002032 /* PluginDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginDetailView.swift; sourceTree = "<group>"; };
+		A10002033 /* AppAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAppearance.swift; sourceTree = "<group>"; };
+		A10002034 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A10002035 /* LoginItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemController.swift; sourceTree = "<group>"; };
+		A10002036 /* ProjectSkillsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSkillsView.swift; sourceTree = "<group>"; };
+		A10002037 /* SkillLibraryFeatureModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLibraryFeatureModels.swift; sourceTree = "<group>"; };
+		A10002038 /* SkillLibraryFeatureViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLibraryFeatureViews.swift; sourceTree = "<group>"; };
+		A10002039 /* ClaudePluginRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePluginRegistry.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10004001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10005001 = {
+			isa = PBXGroup;
+			children = (
+				A10005002 /* SkillsBar */,
+				A10005006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10005002 /* SkillsBar */ = {
+			isa = PBXGroup;
+			children = (
+				A10002001 /* SkillsBarApp.swift */,
+				A10002016 /* main.swift */,
+				A10002028 /* SkillsBarLayout.swift */,
+				A10002014 /* Info.plist */,
+				A10002013 /* Assets.xcassets */,
+				A10005003 /* Models */,
+				A10005004 /* Services */,
+				A10005005 /* Views */,
+			);
+			path = SkillsBar;
+			sourceTree = "<group>";
+		};
+		A10005003 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A10002002 /* Skill.swift */,
+				A10002003 /* SkillSource.swift */,
+				A10002004 /* SkillGroup.swift */,
+				A10002017 /* Agent.swift */,
+				A10002018 /* AgentSource.swift */,
+				A10002019 /* AgentGroup.swift */,
+				A10002023 /* SkillUsageStat.swift */,
+				A10002026 /* SkillSortOption.swift */,
+				A10002027 /* SkillCollection.swift */,
+				A10002033 /* AppAppearance.swift */,
+				A10002029 /* Plugin.swift */,
+				A10002037 /* SkillLibraryFeatureModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A10005004 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A10002005 /* FrontmatterParser.swift */,
+				A10002006 /* SkillScanner.swift */,
+				A10002007 /* FSEventsWatcher.swift */,
+				A10002008 /* SkillStore.swift */,
+				A10002020 /* AgentScanner.swift */,
+				A10002024 /* UsageTracker.swift */,
+				A10002030 /* PluginScanner.swift */,
+				A10002035 /* LoginItemController.swift */,
+				A10002039 /* ClaudePluginRegistry.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A10005005 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A10002009 /* MenuBarView.swift */,
+				A10002010 /* SkillRowView.swift */,
+				A10002011 /* SkillDetailView.swift */,
+				A10002012 /* SectionHeaderView.swift */,
+				A10002015 /* AboutView.swift */,
+				A10002034 /* SettingsView.swift */,
+				A10002036 /* ProjectSkillsView.swift */,
+				A10002021 /* AgentRowView.swift */,
+				A10002022 /* AgentDetailView.swift */,
+				A10002025 /* UsageStatsView.swift */,
+				A10002031 /* PluginRowView.swift */,
+				A10002032 /* PluginDetailView.swift */,
+				A10002038 /* SkillLibraryFeatureViews.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A10005006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10003001 /* SkillsBar.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10006001 /* SkillsBar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10008002 /* Build configuration list for PBXNativeTarget "SkillsBar" */;
+			buildPhases = (
+				A10007001 /* Sources */,
+				A10004001 /* Frameworks */,
+				A10007002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SkillsBar;
+			productName = SkillsBar;
+			productReference = A10003001 /* SkillsBar.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10009001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A10006001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A10008001 /* Build configuration list for PBXProject "SkillsBar" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10005001;
+			productRefGroup = A10005006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10006001 /* SkillsBar */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10007002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10001013 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10007001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10001001 /* SkillsBarApp.swift in Sources */,
+				A10001002 /* Skill.swift in Sources */,
+				A10001003 /* SkillSource.swift in Sources */,
+				A10001004 /* SkillGroup.swift in Sources */,
+				A10001005 /* FrontmatterParser.swift in Sources */,
+				A10001006 /* SkillScanner.swift in Sources */,
+				A10001007 /* FSEventsWatcher.swift in Sources */,
+				A10001008 /* SkillStore.swift in Sources */,
+				A10001009 /* MenuBarView.swift in Sources */,
+				A10001010 /* SkillRowView.swift in Sources */,
+				A10001011 /* SkillDetailView.swift in Sources */,
+				A10001012 /* SectionHeaderView.swift in Sources */,
+				A10001014 /* AboutView.swift in Sources */,
+				A10001015 /* main.swift in Sources */,
+				A10001016 /* Agent.swift in Sources */,
+				A10001017 /* AgentSource.swift in Sources */,
+				A10001018 /* AgentGroup.swift in Sources */,
+				A10001019 /* AgentScanner.swift in Sources */,
+				A10001020 /* AgentRowView.swift in Sources */,
+				A10001021 /* AgentDetailView.swift in Sources */,
+				A10001022 /* SkillUsageStat.swift in Sources */,
+				A10001023 /* UsageTracker.swift in Sources */,
+				A10001024 /* UsageStatsView.swift in Sources */,
+				A10001025 /* SkillSortOption.swift in Sources */,
+				A10001026 /* SkillCollection.swift in Sources */,
+				A10001027 /* SkillsBarLayout.swift in Sources */,
+				A10001028 /* Plugin.swift in Sources */,
+				A10001029 /* PluginScanner.swift in Sources */,
+				A10001030 /* PluginRowView.swift in Sources */,
+				A10001031 /* PluginDetailView.swift in Sources */,
+				A10001032 /* AppAppearance.swift in Sources */,
+				A10001033 /* SettingsView.swift in Sources */,
+				A10001034 /* LoginItemController.swift in Sources */,
+				A10001035 /* ProjectSkillsView.swift in Sources */,
+				A10001036 /* SkillLibraryFeatureModels.swift in Sources */,
+				A10001037 /* SkillLibraryFeatureViews.swift in Sources */,
+				A10001038 /* ClaudePluginRegistry.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A1000A001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A1000A002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		A1000A003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SkillsBar/Info.plist;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "基于 SkillsBar · Copyright 2026 Aman Mittal；中文增强版：袁六伟 · 台州汇芯";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = cn.huixin.skillsmanager;
+				PRODUCT_NAME = HuixinSkillsManager;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1000A004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SkillsBar/Info.plist;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "基于 SkillsBar · Copyright 2026 Aman Mittal；中文增强版：袁六伟 · 台州汇芯";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = cn.huixin.skillsmanager;
+				PRODUCT_NAME = HuixinSkillsManager;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10008001 /* Build configuration list for PBXProject "SkillsBar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000A001 /* Debug */,
+				A1000A002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10008002 /* Build configuration list for PBXNativeTarget "SkillsBar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000A003 /* Debug */,
+				A1000A004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = A10009001 /* Project object */;
+}

@@ -1,0 +1,584 @@
+import SwiftUI
+
+struct SkillDetailView: View {
+    let skill: Skill
+    let isPinned: Bool
+    var usageStat: SkillUsageStat? = nil
+    var conflictSummary: SkillConflictSummary? = nil
+    var validationSummary: SkillValidationSummary? = nil
+    let collections: [SkillCollection]
+    let skillCollections: [SkillCollection]
+    let onBack: () -> Void
+    let onDelete: (Skill) -> Bool
+    let onTogglePin: (Skill) -> Void
+    let onToggleCollectionMembership: (SkillCollection) -> Void
+    let onCreateCollection: (Skill) -> Void
+    let onCopyPath: () -> Void
+    let onCopyCommand: () -> Void
+
+    @State private var showDeleteConfirmation = false
+    @State private var showFullContent = false
+    @AppStorage(AppPreferenceKey.preferredEditor) private var preferredEditorRaw = ExternalEditor.visualStudioCode.rawValue
+
+    private let cardBg = Color.primary.opacity(0.10)
+    private var preferredEditor: ExternalEditor {
+        ExternalEditor.resolved(for: preferredEditorRaw)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header bar
+            HStack {
+                Button(action: onBack) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("返回")
+                            .font(.system(size: 14))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+
+                Spacer()
+
+                // Action buttons
+                HStack(spacing: 6) {
+                    actionButton(
+                        icon: isPinned ? "star.fill" : "star",
+                        label: isPinned ? "Unpin" : "Pin",
+                        color: isPinned ? .yellow : .secondary,
+                        action: { onTogglePin(skill) }
+                    )
+                    actionButton(
+                        icon: "chevron.left.forwardslash.chevron.right",
+                        label: preferredEditor.shortTitle,
+                        color: .secondary,
+                        action: { SkillStore.openSkill(skill, in: preferredEditor) }
+                    )
+                    actionButton(
+                        icon: "folder",
+                        label: "Finder",
+                        color: .secondary,
+                        action: revealInFinder
+                    )
+                    actionButton(
+                        icon: "doc.on.doc",
+                        label: "Copy",
+                        color: .secondary,
+                        action: copyPath
+                    )
+                    if !skill.source.isProjectSkill {
+                        actionButton(
+                            icon: "trash",
+                            label: "删除",
+                            color: .red.opacity(0.8),
+                            action: { showDeleteConfirmation = true }
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Title and badges card
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(skill.displayName)
+                            .font(.system(size: 22, weight: .bold))
+
+                        HStack(spacing: 8) {
+                            badge(skill.source.groupTitle, color: badgeColor)
+                            badge(skill.source.sectionTitle, color: .gray)
+                            if let projectName = skill.source.projectName {
+                                badge(projectName, color: .blue)
+                            }
+                            if let conflictSummary {
+                                badge(conflictSummary.label, color: .orange)
+                                    .help(conflictSummary.helpText)
+                            }
+                            if let version = skill.version {
+                                badge("v\(version)", color: .blue)
+                            }
+                        }
+
+                        // Path (click to reveal in Finder)
+                        Button(action: revealInFinder) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "folder")
+                                    .font(.system(size: 12))
+                                Text(skill.path)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .lineLimit(2)
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { hovering in
+                            if hovering {
+                                NSCursor.pointingHand.push()
+                            } else {
+                                NSCursor.pop()
+                            }
+                        }
+                        .help("Reveal in Finder")
+
+                        // Last modified
+                        if let modified = skill.formattedLastModified {
+                            HStack(spacing: 6) {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 11))
+                                Text("Modified \(modified)")
+                                    .font(.system(size: 12))
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(cardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    if let validationSummary {
+                        validationPreviewCard(validationSummary)
+                    }
+
+                    // Description card
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("DESCRIPTION")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .tracking(0.5)
+
+                        if !skill.description.isEmpty {
+                            if let attributed = try? AttributedString(markdown: skill.description) {
+                                Text(attributed)
+                                    .font(.system(size: 14))
+                                    .lineSpacing(3)
+                            } else {
+                                Text(skill.description)
+                                    .font(.system(size: 14))
+                                    .lineSpacing(3)
+                            }
+                        } else {
+                            Text("No description available.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.secondary)
+                                .italic()
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(cardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    // How to use card
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("HOW TO USE")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .tracking(0.5)
+
+                        HStack(spacing: 0) {
+                            Text(skill.triggerCommand)
+                                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                                .textSelection(.enabled)
+                            Spacer()
+                            Button {
+                                onCopyCommand()
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("Copy command")
+                        }
+                        .padding(10)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                        Text(skill.triggerHint)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(cardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    // Usage card
+                    if let stat = usageStat {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("USAGE")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .tracking(0.5)
+
+                            HStack(spacing: 0) {
+                                VStack(spacing: 4) {
+                                    Text("\(stat.totalCount)")
+                                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                    Text("Total Uses")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+
+                                Divider().frame(height: 30)
+
+                                VStack(spacing: 4) {
+                                    if let lastUsed = stat.lastUsedDate {
+                                        Text(relativeDate(lastUsed))
+                                            .font(.system(size: 14, weight: .semibold))
+                                    } else {
+                                        Text("--")
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                    Text("Last Used")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+
+                                Divider().frame(height: 30)
+
+                                VStack(spacing: 4) {
+                                    if let firstUsed = stat.firstUsedDate {
+                                        Text(relativeDate(firstUsed))
+                                            .font(.system(size: 14, weight: .semibold))
+                                    } else {
+                                        Text("--")
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                    Text("First Used")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+
+                            Text(stat.frequencyDescription)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(cardBg)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("COLLECTIONS")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .tracking(0.5)
+                            Spacer()
+                            Menu {
+                                if collections.isEmpty {
+                                    Button("No collections yet") {}
+                                        .disabled(true)
+                                } else {
+                                    ForEach(collections) { collection in
+                                        Button(
+                                            skillCollections.contains(collection)
+                                                ? "Remove from \(collection.name)"
+                                                : "Add to \(collection.name)"
+                                        ) {
+                                            onToggleCollectionMembership(collection)
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button("New Collection…") {
+                                    onCreateCollection(skill)
+                                }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "square.stack.3d.up")
+                                        .font(.system(size: 12))
+                                    Text("Manage")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundStyle(.secondary)
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                        }
+
+                        if skillCollections.isEmpty {
+                            Text("Not in any collections yet.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], alignment: .leading, spacing: 8) {
+                                ForEach(skillCollections) { collection in
+                                    collectionBadge(collection)
+                                }
+                            }
+                        }
+
+                        Text("Collections can mix Claude Code and Codex skills.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(cardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    // Full content preview card
+                    if !skill.body.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showFullContent.toggle()
+                                }
+                            } label: {
+                                HStack {
+                                    Text("FULL CONTENT")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .tracking(0.5)
+                                    Spacer()
+                                    Image(systemName: showFullContent ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+
+                            if showFullContent {
+                                Text(skill.body)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .lineSpacing(2)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(cardBg)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    // Folder contents card
+                    if !skill.folderContents.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("FILES")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .tracking(0.5)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(skill.folderContents, id: \.self) { file in
+                                    let isDirectory = skill.folderDirectories.contains(file)
+                                    HStack(spacing: 6) {
+                                        Image(systemName: isDirectory ? "folder" : fileIcon(for: file))
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 16)
+                                        Text(file)
+                                            .font(.system(size: 12, design: .monospaced))
+                                    }
+                                    if isDirectory, let children = skill.directoryContents[file], !children.isEmpty {
+                                        ForEach(children, id: \.self) { child in
+                                            HStack(spacing: 6) {
+                                                Image(systemName: fileIcon(for: child))
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(.tertiary)
+                                                    .frame(width: 16)
+                                                Text(child)
+                                                    .font(.system(size: 12, design: .monospaced))
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding(.leading, 22)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(cardBg)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .padding(14)
+            }
+        }
+        .frame(width: SkillsBarLayout.windowWidth, height: SkillsBarLayout.detailHeight)
+        .alert("Move Skill to Trash", isPresented: $showDeleteConfirmation) {
+            Button("取消", role: .cancel) {}
+            Button("Move to Trash", role: .destructive) {
+                if onDelete(skill) {
+                    onBack()
+                }
+            }
+        } message: {
+            Text("Move \"\(skill.displayName)\" and its folder to Trash?")
+        }
+    }
+
+    private var badgeColor: Color {
+        switch skill.source.badgeColor {
+        case "purple": return .purple
+        case "blue": return .blue
+        case "green": return .green
+        case "orange": return .orange
+        default: return .gray
+        }
+    }
+
+    private func badge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
+    private func collectionBadge(_ collection: SkillCollection) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: collection.iconName)
+                .font(.system(size: 10, weight: .semibold))
+            Text(collection.name)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(collection.accent.swiftUIColor.opacity(0.12))
+        .foregroundStyle(collection.accent.swiftUIColor)
+        .clipShape(Capsule())
+    }
+
+    private func validationPreviewCard(_ summary: SkillValidationSummary) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("VALIDATION PREVIEW")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+                Spacer()
+                badge(summary.statusTitle, color: validationColor(summary))
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                validationRow(
+                    title: "Frontmatter",
+                    value: summary.hasFrontmatter ? "Valid" : "Missing or invalid",
+                    isReady: summary.hasFrontmatter
+                )
+                validationRow(title: "名称", value: summary.hasName ? "Present" : "Missing", isReady: summary.hasName)
+                validationRow(title: "说明", value: summary.hasDescription ? "Present" : "Missing", isReady: summary.hasDescription)
+                validationRow(title: "Trigger", value: skill.triggerCommand, isReady: true)
+            }
+
+            if !summary.recommendedMissingFields.isEmpty {
+                Text("Recommended fields to add: \(summary.recommendedMissingFields.joined(separator: ", ")).")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Preview")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(summary.previewTitle)
+                    .font(.system(size: 13, weight: .medium))
+                Text(summary.previewDescription)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Text(summary.exampleInvocation)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func validationRow(title: String, value: String, isReady: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: isReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(isReady ? .green : .orange)
+                .frame(width: 16)
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 88, alignment: .leading)
+            Text(value)
+                .font(.system(size: 12))
+                .lineLimit(1)
+            Spacer()
+        }
+    }
+
+    private func validationColor(_ summary: SkillValidationSummary) -> Color {
+        if !summary.hasFrontmatter { return .red }
+        if !summary.recommendedMissingFields.isEmpty { return .orange }
+        return .green
+    }
+
+    private func copyPath() {
+        onCopyPath()
+    }
+
+    private func revealInFinder() {
+        NSWorkspace.shared.selectFile(skill.path, inFileViewerRootedAtPath: "")
+    }
+
+    private func actionButton(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+            }
+            .frame(width: 46, height: 36)
+            .foregroundStyle(color)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func relativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func fileIcon(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "md": return "doc.text"
+        case "yaml", "yml": return "gearshape"
+        case "json": return "curlybraces"
+        case "swift", "py", "js", "ts": return "chevron.left.forwardslash.chevron.right"
+        case "txt": return "doc.plaintext"
+        default:
+            if filename.hasPrefix(".") { return "eye.slash" }
+            return "doc"
+        }
+    }
+}

@@ -1,0 +1,19 @@
+name: 构建汇芯技能管家
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建并核验
+        run: bash scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: huixin-skills-manager-macos
+          path: build/huixin-skills-manager-macos.zip

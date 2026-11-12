@@ -1,0 +1,1083 @@
+import Foundation
+
+private let iso8601WithFractional: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+}()
+
+private let iso8601Plain: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter
+}()
+
+private let usageCacheSchemaVersion = 9
+private let usageHistorySchemaVersion = 1
+private let maxJSONLineBytes = 16 * 1024 * 1024
+
+private let codexRolloutSkillSignalBytes = [
+    Array("$".utf8),
+    Array("/skills".utf8),
+    Array("Using".utf8),
+    Array("using".utf8),
+    Array("Invoking".utf8),
+    Array("invoking".utf8),
+    // Codex CLI announces skill invocations as: Loaded `/skill-name` ...
+    // Use the full prefix to avoid false-positive matches on unrelated "Loaded" text.
+    Array("Loaded `/".utf8),
+]
+
+@MainActor
+final class UsageTracker: ObservableObject {
+    @Published var stats: [String: SkillUsageStat] = [:]
+    @Published var isLoading = false
+    @Published var lastRefreshDate: Date?
+
+    private var autoRefreshTimer: Timer?
+    private var watcher: FSEventsWatcher?
+    private var watchedRefreshTask: Task<Void, Never>?
+    private var lastWatchedRefreshDate: Date?
+    private static let autoRefreshInterval: TimeInterval = 12 * 60 * 60
+    private static let watchedRefreshDelay: UInt64 = 5 * 1_000_000_000
+    private static let watchedRefreshCooldown: TimeInterval = 30
+
+    deinit {
+        autoRefreshTimer?.invalidate()
+        watchedRefreshTask?.cancel()
+        watcher?.stop()
+    }
+
+    private let cacheURL: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let directory = appSupport.appendingPathComponent("汇芯技能管家")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("usage-cache.json")
+    }()
+
+    private let historyURL: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let directory = appSupport.appendingPathComponent("汇芯技能管家")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("usage-history.json")
+    }()
+
+    // MARK: - Public API
+
+    func stat(for skill: Skill) -> SkillUsageStat? {
+        guard case .codexCLI = skill.source else { return nil }
+        let source = Self.source(for: skill.source)
+        let skillName = Self.normalizeTriggerCommand(skill.triggerCommand, source: source)
+        return stats[Self.statsKey(for: skillName, source: source)]
+    }
+
+    var rankedStats: [SkillUsageStat] {
+        Self.sortStats(Array(stats.values))
+    }
+
+    func rankedStats(since cutoffDate: Date?) -> [SkillUsageStat] {
+        Self.sortStats(stats.values.compactMap { $0.scoped(since: cutoffDate) })
+    }
+
+    static func identifier(for skill: Skill) -> String {
+        let source = source(for: skill.source)
+        let skillName = normalizeTriggerCommand(skill.triggerCommand, source: source)
+        return statsKey(for: skillName, source: source)
+    }
+
+    // MARK: - Refresh
+
+    func refresh() {
+        guard !isLoading else { return }
+        isLoading = true
+
+        Task.detached(priority: .userInitiated) {
+            let cachedSnapshot = await self.loadCache()
+            var history = await self.loadHistory()
+            let didMergeCachedSnapshot = Self.mergeInvocations(from: cachedSnapshot, into: &history)
+            let cachedStats = Self.buildStats(from: history)
+            if !cachedStats.isEmpty {
+                await MainActor.run {
+                    self.stats = cachedStats
+                    self.lastRefreshDate = cachedSnapshot.lastFullScanDate
+                }
+            }
+
+            let cache = await self.performIncrementalParse()
+            let didMergeParsedSnapshot = Self.mergeInvocations(from: cache, into: &history)
+            let newStats = Self.buildStats(from: history)
+            await MainActor.run {
+                self.stats = newStats
+                self.isLoading = false
+                self.lastRefreshDate = Date()
+            }
+            await self.saveCache(cache)
+            if didMergeCachedSnapshot || didMergeParsedSnapshot {
+                await self.saveHistory(history)
+            }
+        }
+    }
+
+    func startAutoRefresh() {
+        stopAutoRefresh()
+        startWatching()
+        autoRefreshTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.autoRefreshInterval,
+            repeats: true
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.refresh()
+            }
+        }
+    }
+
+    func stopAutoRefresh() {
+        autoRefreshTimer?.invalidate()
+        autoRefreshTimer = nil
+        watchedRefreshTask?.cancel()
+        watchedRefreshTask = nil
+        watcher?.stop()
+        watcher = nil
+    }
+
+    private func startWatching() {
+        watcher?.stop()
+
+        let fileManager = FileManager.default
+        let home = fileManager.homeDirectoryForCurrentUser.path
+        let watchPaths = [
+            "\(home)/.claude/projects",
+            "\(home)/.codex/history.jsonl",
+            "\(home)/.codex/sessions",
+            "\(home)/.pi/agent/sessions",
+        ].filter { fileManager.fileExists(atPath: $0) }
+
+        watcher = FSEventsWatcher(paths: watchPaths) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.scheduleWatchedRefresh()
+            }
+        }
+        watcher?.start()
+    }
+
+    private func scheduleWatchedRefresh() {
+        watchedRefreshTask?.cancel()
+        watchedRefreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.watchedRefreshDelay)
+            guard !Task.isCancelled else { return }
+            if let lastWatchedRefreshDate = self?.lastWatchedRefreshDate,
+               Date().timeIntervalSince(lastWatchedRefreshDate) < Self.watchedRefreshCooldown {
+                return
+            }
+            self?.lastWatchedRefreshDate = Date()
+            self?.refresh()
+        }
+    }
+
+    // MARK: - Incremental Parse
+
+    nonisolated private func performIncrementalParse() async -> UsageCache {
+        var cache = await loadCache()
+        cache.schemaVersion = usageCacheSchemaVersion
+        let fileManager = FileManager.default
+        let home = fileManager.homeDirectoryForCurrentUser.path
+
+
+        let codexHistoryPath = "\(home)/.codex/history.jsonl"
+        if fileManager.fileExists(atPath: codexHistoryPath) {
+            Self.refreshCachedFile(at: codexHistoryPath, parser: Self.parseCodexHistoryFile, cache: &cache, fileManager: fileManager)
+        }
+
+        for filePath in Self.codexDesktopSessionPaths(home: home, fileManager: fileManager) {
+            Self.refreshCachedFile(at: filePath, parser: Self.parseCodexDesktopSessionFile, cache: &cache, fileManager: fileManager)
+        }
+
+
+        cache.lastFullScanDate = Date()
+        return cache
+    }
+
+    nonisolated private static func piSessionPaths(home: String, fileManager: FileManager) -> [String] {
+        jsonlFilePathsRecursively(in: "\(home)/.pi/agent/sessions", fileManager: fileManager)
+    }
+
+    nonisolated private static func claudeTranscriptPaths(home: String, fileManager: FileManager) -> [String] {
+        let projectsDirectory = "\(home)/.claude/projects"
+        guard fileManager.fileExists(atPath: projectsDirectory) else { return [] }
+
+        var paths: [String] = []
+        if let projectDirectories = try? fileManager.contentsOfDirectory(atPath: projectsDirectory) {
+            for projectDirectory in projectDirectories {
+                let projectPath = "\(projectsDirectory)/\(projectDirectory)"
+                var isDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: projectPath, isDirectory: &isDirectory), isDirectory.boolValue else {
+                    continue
+                }
+
+                if let files = try? fileManager.contentsOfDirectory(atPath: projectPath) {
+                    for file in files where file.hasSuffix(".jsonl") {
+                        paths.append("\(projectPath)/\(file)")
+                    }
+                }
+            }
+        }
+
+        return paths
+    }
+
+    nonisolated private static func codexDesktopSessionPaths(home: String, fileManager: FileManager) -> [String] {
+        let sessionsDirectory = "\(home)/.codex/sessions"
+        return jsonlFilePathsRecursively(in: sessionsDirectory, fileManager: fileManager)
+    }
+
+    nonisolated private static func jsonlFilePathsRecursively(in directory: String, fileManager: FileManager) -> [String] {
+        guard fileManager.fileExists(atPath: directory),
+              let enumerator = fileManager.enumerator(atPath: directory) else {
+            return []
+        }
+
+        var paths: [String] = []
+        while let relativePath = enumerator.nextObject() as? String {
+            guard relativePath.hasSuffix(".jsonl") else { continue }
+            paths.append((directory as NSString).appendingPathComponent(relativePath))
+        }
+        return paths
+    }
+
+    nonisolated private static func refreshCachedFile(
+        at path: String,
+        parser: (String) -> [SkillInvocation],
+        cache: inout UsageCache,
+        fileManager: FileManager
+    ) {
+        guard let attributes = try? fileManager.attributesOfItem(atPath: path),
+              let modifiedDate = attributes[.modificationDate] as? Date,
+              let fileSize = attributes[.size] as? UInt64 else {
+            return
+        }
+
+        if let cached = cache.parsedFiles[path],
+           Self.cacheDate(cached.lastModified, matches: modifiedDate),
+           cached.fileSize == fileSize {
+            return
+        }
+
+        cache.parsedFiles[path] = ParsedSessionFile(
+            path: path,
+            lastModified: modifiedDate,
+            fileSize: fileSize,
+            invocations: parser(path)
+        )
+    }
+
+    // MARK: - Parse Claude Session File
+
+    nonisolated private static func parseClaudeSessionFile(at path: String) -> [SkillInvocation] {
+        var invocations: [SkillInvocation] = []
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = iso8601WithFractional.date(from: string) { return date }
+            if let date = iso8601Plain.date(from: string) { return date }
+            return Date.distantPast
+        }
+
+        let components = path.components(separatedBy: "/")
+        let projectPath: String? = {
+            if let index = components.firstIndex(of: "projects"), index + 1 < components.count {
+                return components[index + 1]
+            }
+            return nil
+        }()
+
+        let skillDirectoryPrefix = "Base directory for this skill:"
+
+        readJSONLines(at: path) { line in
+            guard let lineString = String(data: line, encoding: .utf8) else { return }
+
+            if lineString.contains("\"Skill\""),
+               let sessionLine = try? decoder.decode(SessionLine.self, from: line),
+               sessionLine.type == "assistant",
+               let content = sessionLine.message?.content {
+                for block in content {
+                    guard block.type == "tool_use",
+                          block.name == "技能",
+                          let input = block.input,
+                          let skillName = normalizedSkillName(input.skill, source: .claudeCode) else {
+                        continue
+                    }
+
+                    invocations.append(SkillInvocation(
+                        source: .claudeCode,
+                        skillName: skillName,
+                        args: input.args,
+                        timestamp: sessionLine.timestamp ?? Date.distantPast,
+                        sessionId: sessionLine.sessionId ?? "",
+                        projectPath: projectPath
+                    ))
+                }
+            }
+
+            if lineString.contains(skillDirectoryPrefix),
+               let sessionLine = try? decoder.decode(SessionLine.self, from: line),
+               sessionLine.type == "user",
+               let content = sessionLine.message?.content {
+                for block in content {
+                    guard block.type == "text",
+                          let text = block.text,
+                          let range = text.range(of: skillDirectoryPrefix) else {
+                        continue
+                    }
+
+                    let pathString = text[range.upperBound...].trimmingCharacters(in: .whitespaces)
+                    let skillPath = pathString.components(separatedBy: "\n").first ?? pathString
+                    let folderName = URL(fileURLWithPath: skillPath).lastPathComponent
+                    guard let skillName = normalizedSkillName(folderName, source: .claudeCode) else {
+                        continue
+                    }
+
+                    invocations.append(SkillInvocation(
+                        source: .claudeCode,
+                        skillName: skillName,
+                        args: nil,
+                        timestamp: sessionLine.timestamp ?? Date.distantPast,
+                        sessionId: sessionLine.sessionId ?? "",
+                        projectPath: projectPath
+                    ))
+                }
+            }
+        }
+
+        return invocations
+    }
+
+    // MARK: - Parse Pi Session File
+
+    /// Pi wraps an invoked skill in a user message that begins with
+    /// `<skill name="..." location="...">`, so invocations are read exactly rather than
+    /// guessed from prose. The literal form is pi's own `parseSkillBlock` regex.
+    nonisolated private static func parsePiSessionFile(at path: String) -> [SkillInvocation] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = iso8601WithFractional.date(from: string) { return date }
+            if let date = iso8601Plain.date(from: string) { return date }
+            return Date.distantPast
+        }
+
+        // Fall back to the filename's UUID suffix when the session header is missing.
+        var sessionId = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        if let underscoreIndex = sessionId.lastIndex(of: "_") {
+            sessionId = String(sessionId[sessionId.index(after: underscoreIndex)...])
+        }
+        var projectPath: String?
+        var invocations: [SkillInvocation] = []
+
+        readJSONLines(at: path) { line in
+            guard let entry = try? decoder.decode(PiSessionLine.self, from: line) else { return }
+
+            if entry.type == "session" {
+                if let id = entry.id { sessionId = id }
+                if let cwd = entry.cwd { projectPath = cwd }
+                return
+            }
+
+            guard entry.type == "message",
+                  let message = entry.message,
+                  message.role == "user",
+                  let blocks = message.content else {
+                return
+            }
+
+            for block in blocks {
+                guard let text = block.text,
+                      let block = parsePiSkillBlock(text),
+                      let skillName = normalizedSkillName(block.name, source: .pi) else {
+                    continue
+                }
+
+                invocations.append(SkillInvocation(
+                    source: .pi,
+                    skillName: skillName,
+                    args: block.args,
+                    timestamp: entry.timestamp ?? Date.distantPast,
+                    sessionId: sessionId,
+                    projectPath: projectPath
+                ))
+            }
+        }
+
+        return invocations
+    }
+
+    /// Reads the skill name and any trailing user arguments out of a pi skill block.
+    nonisolated private static func parsePiSkillBlock(_ text: String) -> (name: String, args: String?)? {
+        let opening = "<skill name=\""
+        guard text.hasPrefix(opening) else { return nil }
+
+        let afterOpening = text.index(text.startIndex, offsetBy: opening.count)
+        guard let nameEnd = text[afterOpening...].firstIndex(of: "\"") else { return nil }
+        let name = String(text[afterOpening..<nameEnd])
+        guard !name.isEmpty else { return nil }
+
+        // Anything after the closing tag is the user's arguments.
+        var args: String?
+        if let closing = text.range(of: "</skill>", options: .backwards) {
+            let trailing = text[closing.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            args = trailing.isEmpty ? nil : trailing
+        }
+
+        return (name, args)
+    }
+
+    // MARK: - Parse Codex History
+
+    nonisolated private static func parseCodexHistoryFile(at path: String) -> [SkillInvocation] {
+        let decoder = JSONDecoder()
+        var invocations: [SkillInvocation] = []
+
+        readJSONLines(at: path) { line in
+            guard let entry = try? decoder.decode(CodexHistoryLine.self, from: line),
+                  let text = entry.text else {
+                return
+            }
+
+            let timestamp = Date(timeIntervalSince1970: TimeInterval(entry.ts))
+            for skillName in extractCodexSkillNames(from: text) {
+                invocations.append(SkillInvocation(
+                    source: .codexCLI,
+                    skillName: skillName,
+                    args: nil,
+                    timestamp: timestamp,
+                    sessionId: entry.sessionId,
+                    projectPath: nil
+                ))
+            }
+        }
+
+        return invocations
+    }
+
+    nonisolated private static func parseCodexDesktopSessionFile(at path: String) -> [SkillInvocation] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = iso8601WithFractional.date(from: string) { return date }
+            if let date = iso8601Plain.date(from: string) { return date }
+            return Date.distantPast
+        }
+
+        var sessionId = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        var projectPath: String?
+        var isCodexSession = false
+        var candidates: [CodexSkillCandidate] = []
+        // Once a skill is loaded (or explicitly triggered) in a Codex session, count each
+        // subsequent assistant message that references the skill by name as a separate "use".
+        // This mirrors how a user perceives skill usage: one load → many applied tasks.
+        var loadedSkills: Set<String> = []
+
+        readJSONLines(at: path) { line in
+            if containsByteSequence(line, Array(#""type":"session_meta""#.utf8)),
+               let entry = try? decoder.decode(CodexRolloutLine.self, from: line),
+               let payload = entry.payload {
+                sessionId = payload.id ?? sessionId
+                projectPath = payload.cwd
+                // Accept any known Codex originator. Codex Desktop writes "Codex Desktop";
+                // Codex CLI writes "codex-tui" (and other CLI variants).
+                let originator = payload.originator ?? ""
+                isCodexSession = originator == "Codex Desktop" || originator.hasPrefix("codex")
+                return
+            }
+
+            guard isCodexSession else { return }
+
+            // Decide whether this line is worth decoding. The signal pre-filter catches the
+            // explicit invocation patterns ("$name", "/skills name", "Loaded `/name`", etc.).
+            // Once a skill is loaded in this session, also decode plain response_item lines
+            // so we can count assistant messages that reference the loaded skill by name.
+            let hasSkillSignal = codexRolloutLineContainsSkillSignal(line)
+            let mayContainSkillUse = !loadedSkills.isEmpty
+                && containsByteSequence(line, Array(#""type":"response_item""#.utf8))
+            guard hasSkillSignal || mayContainSkillUse,
+                  let entry = try? decoder.decode(CodexRolloutLine.self, from: line),
+                  entry.type == "response_item",
+                  entry.payload?.type == "message",
+                  let role = entry.payload?.role,
+                  let content = entry.payload?.content else {
+                return
+            }
+
+            let text = content.compactMap(\.text).joined(separator: "\n")
+            let timestamp = entry.timestamp ?? Date.distantPast
+
+            switch role {
+            case "user":
+                for skillName in extractCodexSkillNames(from: text) {
+                    candidates.append(CodexSkillCandidate(skillName: skillName, timestamp: timestamp, isExplicitTrigger: true))
+                    loadedSkills.insert(skillName)
+                }
+            case "assistant":
+                // Explicit invocation markers (Loaded `/name`, "using skill: name", etc.)
+                let explicitSkills = extractCodexAssistantSkillNames(from: text)
+                for skillName in explicitSkills {
+                    candidates.append(CodexSkillCandidate(skillName: skillName, timestamp: timestamp, isExplicitTrigger: false))
+                    loadedSkills.insert(skillName)
+                }
+                // Skill-use signal: an assistant message after a load that references the
+                // loaded skill name by word-bounded match. Each such message is a candidate
+                // "use" event; the dedupe pass below collapses consecutive matches in a turn.
+                let explicitSet = Set(explicitSkills)
+                for skillName in loadedSkills where !explicitSet.contains(skillName) {
+                    if mentionsSkillName(skillName, in: text) {
+                        candidates.append(CodexSkillCandidate(skillName: skillName, timestamp: timestamp, isExplicitTrigger: false))
+                    }
+                }
+            default:
+                return
+            }
+        }
+
+        var invocations: [SkillInvocation] = []
+        var seenInvocationKeys: Set<String> = []
+        var lastInvocationTimestampBySkill: [String: Date] = [:]
+        // Consecutive assistant messages within a single "turn" should count once. 60s is
+        // wider than a single agent response but narrower than between user prompts.
+        let usesDedupeWindow: TimeInterval = 60
+
+        for candidate in candidates.sorted(by: { $0.timestamp < $1.timestamp }) {
+            // Dedupe: collapse multiple agent messages in the same task into one use.
+            if let last = lastInvocationTimestampBySkill[candidate.skillName],
+               abs(candidate.timestamp.timeIntervalSince(last)) <= usesDedupeWindow,
+               !candidate.isExplicitTrigger {
+                continue
+            }
+
+            let timestampKey = Int(candidate.timestamp.timeIntervalSince1970)
+            let invocationKey = "\(sessionId)::\(timestampKey)::\(candidate.skillName)"
+            guard seenInvocationKeys.insert(invocationKey).inserted else { continue }
+
+            invocations.append(SkillInvocation(
+                source: .codexCLI,
+                skillName: candidate.skillName,
+                args: nil,
+                timestamp: candidate.timestamp,
+                sessionId: sessionId,
+                projectPath: projectPath
+            ))
+            lastInvocationTimestampBySkill[candidate.skillName] = candidate.timestamp
+        }
+
+        return invocations
+    }
+
+    /// Word-bounded check for a skill name within free-form assistant text. Avoids matching
+    /// occurrences embedded in longer identifiers (e.g. "expo-docs-terminal-audit-foo" wouldn't
+    /// match "expo-docs-terminal-audit"). Case-sensitive: skill names in Codex output preserve case.
+    nonisolated private static func mentionsSkillName(_ skillName: String, in text: String) -> Bool {
+        guard !skillName.isEmpty, !text.isEmpty else { return false }
+        // Build a regex pattern: skill name surrounded by non-name characters (or string edges).
+        // Name characters: letters, digits, ".", "_", ":", "-".
+        let escaped = NSRegularExpression.escapedPattern(for: skillName)
+        let pattern = "(?:^|[^A-Za-z0-9._:-])" + escaped + "(?:$|[^A-Za-z0-9._:-])"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        return regex.firstMatch(in: text, range: fullRange) != nil
+    }
+
+    nonisolated private static func extractCodexSkillNames(from text: String) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var results: [String] = []
+
+        if let regex = try? NSRegularExpression(pattern: #"(^|[^A-Za-z0-9_])\$([A-Za-z0-9][A-Za-z0-9._:-]*)"#) {
+            let nsText = trimmed as NSString
+            let fullRange = NSRange(location: 0, length: nsText.length)
+            for match in regex.matches(in: trimmed, range: fullRange) {
+                guard match.numberOfRanges > 2 else { continue }
+                let token = nsText.substring(with: match.range(at: 2))
+                guard token.contains(where: \.isLetter),
+                      let skillName = normalizedSkillName(token, source: .codexCLI) else {
+                    continue
+                }
+                results.append(skillName)
+            }
+        }
+
+        if let regex = try? NSRegularExpression(pattern: #"<skill>\s*<name>\s*([A-Za-z0-9][A-Za-z0-9._:-]*)\s*</name>"#) {
+            let nsText = trimmed as NSString
+            let fullRange = NSRange(location: 0, length: nsText.length)
+            for match in regex.matches(in: trimmed, range: fullRange) {
+                guard match.numberOfRanges > 1 else { continue }
+                let token = nsText.substring(with: match.range(at: 1))
+                if let skillName = normalizedSkillName(token, source: .codexCLI) {
+                    results.append(skillName)
+                }
+            }
+        }
+
+        let components = trimmed.split(whereSeparator: \.isWhitespace)
+        if let first = components.first, first.lowercased() == "/skills" {
+            if components.count >= 3, components[1].lowercased() == "open" {
+                if let skillName = normalizedSkillName(String(components[2]), source: .codexCLI) {
+                    results.append(skillName)
+                }
+            } else if components.count >= 2 {
+                let candidate = components[1].lowercased()
+                if candidate != "list" && candidate != "help",
+                   let skillName = normalizedSkillName(String(components[1]), source: .codexCLI) {
+                    results.append(skillName)
+                }
+            }
+        }
+
+        if let range = trimmed.range(of: "use /skills ", options: [.caseInsensitive]) {
+            let remainder = trimmed[range.upperBound...]
+            let token = String(remainder.prefix(while: Self.isSkillNameCharacter))
+            if let skillName = normalizedSkillName(token, source: .codexCLI) {
+                results.append(skillName)
+            }
+        }
+
+        var seen: Set<String> = []
+        return results.filter { seen.insert($0).inserted }
+    }
+
+    nonisolated private static func readJSONLines(at path: String, handleLine: (Data) -> Void) {
+        guard let fileHandle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)) else { return }
+        defer { try? fileHandle.close() }
+
+        let delimiter = UInt8(ascii: "\n")
+        let delimiterData = Data([delimiter])
+        let chunkSize = 1024 * 1024
+        var buffer = Data()
+        var isSkippingOversizedLine = false
+
+        while true {
+            guard let chunk = try? fileHandle.read(upToCount: chunkSize),
+                  !chunk.isEmpty else {
+                break
+            }
+
+            var chunkStart = chunk.startIndex
+            if isSkippingOversizedLine {
+                if let newlineIndex = chunk[chunkStart...].firstIndex(of: delimiter) {
+                    isSkippingOversizedLine = false
+                    chunkStart = chunk.index(after: newlineIndex)
+                } else {
+                    continue
+                }
+            }
+
+            if chunkStart != chunk.endIndex {
+                buffer.append(chunk[chunkStart...])
+            }
+
+            while let range = buffer.firstRange(of: delimiterData) {
+                let line = buffer.subdata(in: buffer.startIndex..<range.lowerBound)
+                if !line.isEmpty && line.count <= maxJSONLineBytes {
+                    handleLine(line)
+                }
+                buffer.removeSubrange(buffer.startIndex..<range.upperBound)
+            }
+
+            if buffer.count > maxJSONLineBytes {
+                buffer.removeAll(keepingCapacity: true)
+                isSkippingOversizedLine = true
+            }
+        }
+
+        if !isSkippingOversizedLine && !buffer.isEmpty && buffer.count <= maxJSONLineBytes {
+            handleLine(buffer)
+        }
+    }
+
+    nonisolated private static func codexRolloutLineContainsSkillSignal<C: Collection>(_ line: C) -> Bool where C.Element == UInt8 {
+        codexRolloutSkillSignalBytes.contains { containsByteSequence(line, $0) }
+    }
+
+    nonisolated private static func containsByteSequence<C: Collection>(_ haystack: C, _ needle: [UInt8]) -> Bool where C.Element == UInt8 {
+        guard !needle.isEmpty else { return true }
+
+        var index = haystack.startIndex
+        while index != haystack.endIndex {
+            var currentIndex = index
+            var needleIndex = needle.startIndex
+
+            while needleIndex != needle.endIndex,
+                  currentIndex != haystack.endIndex,
+                  haystack[currentIndex] == needle[needleIndex] {
+                haystack.formIndex(after: &currentIndex)
+                needle.formIndex(after: &needleIndex)
+            }
+
+            if needleIndex == needle.endIndex {
+                return true
+            }
+
+            haystack.formIndex(after: &index)
+        }
+
+        return false
+    }
+
+    nonisolated private static func extractCodexAssistantSkillNames(from text: String) -> [String] {
+        let patterns = [
+            #"(?i)\busing\s+(?:the\s+)?skill:?\s+`?([A-Za-z0-9][A-Za-z0-9._:-]*)`?"#,
+            #"(?i)\busing\s+(?:the\s+)?`?([A-Za-z0-9][A-Za-z0-9._:-]*)`?\s+(?:skill|guidance)\b"#,
+            #"(?i)\binvoking\s+(?:the\s+)?skill:?\s+`?([A-Za-z0-9][A-Za-z0-9._:-]*)`?"#,
+            // Codex CLI announces user-skill invocations as: Loaded `/skill-name` ...
+            #"\bLoaded\s+`/([A-Za-z0-9][A-Za-z0-9._:-]*)`"#,
+        ]
+
+        var results: [String] = []
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: text, range: fullRange) {
+                guard match.numberOfRanges > 1 else { continue }
+                let token = nsText.substring(with: match.range(at: 1))
+                if let skillName = normalizedSkillName(token, source: .codexCLI) {
+                    results.append(skillName)
+                }
+            }
+        }
+
+        var seen: Set<String> = []
+        return results.filter { seen.insert($0).inserted }
+    }
+
+    nonisolated private static func isSkillNameCharacter(_ character: Character) -> Bool {
+        // Codex plugin skills use identifiers like "plugin-name:skill-name".
+        character.isLetter || character.isNumber || character == "-" || character == "_" || character == "." || character == ":"
+    }
+
+    // MARK: - Build Stats
+
+    nonisolated private static func buildStats(from cache: UsageCache) -> [String: SkillUsageStat] {
+        buildStats(from: uniqueInvocations(in: cache))
+    }
+
+    nonisolated private static func buildStats(from history: UsageHistoryStore) -> [String: SkillUsageStat] {
+        buildStats(from: Array(history.events.values))
+    }
+
+    nonisolated private static func buildStats(from invocations: [SkillInvocation]) -> [String: SkillUsageStat] {
+        var grouped: [String: [SkillInvocation]] = [:]
+
+        for invocation in invocations {
+            let key = statsKey(for: invocation.skillName, source: invocation.source)
+            grouped[key, default: []].append(invocation)
+        }
+
+        var result: [String: SkillUsageStat] = [:]
+        for (key, invocations) in grouped {
+            let sortedInvocations = invocations.sorted { $0.timestamp < $1.timestamp }
+            guard let firstInvocation = sortedInvocations.first else { continue }
+            result[key] = SkillUsageStat(
+                source: firstInvocation.source,
+                skillName: firstInvocation.skillName,
+                totalCount: sortedInvocations.count,
+                lastUsedDate: sortedInvocations.last?.timestamp,
+                firstUsedDate: sortedInvocations.first?.timestamp,
+                invocations: sortedInvocations
+            )
+        }
+
+        return result
+    }
+
+    @discardableResult
+    nonisolated private static func mergeInvocations(from cache: UsageCache, into history: inout UsageHistoryStore) -> Bool {
+        var didChange = false
+        history.schemaVersion = usageHistorySchemaVersion
+
+        for invocation in uniqueInvocations(in: cache) {
+            let key = historyKey(for: invocation)
+            if history.events[key] == nil {
+                history.events[key] = invocation
+                didChange = true
+            }
+        }
+
+        if didChange {
+            history.lastUpdatedDate = Date()
+        }
+
+        return didChange
+    }
+
+    nonisolated private static func uniqueInvocations(in cache: UsageCache) -> [SkillInvocation] {
+        var invocationsByKey: [String: SkillInvocation] = [:]
+
+        for parsedFile in cache.parsedFiles.values {
+            for invocation in parsedFile.invocations {
+                invocationsByKey[historyKey(for: invocation)] = invocation
+            }
+        }
+
+        return Array(invocationsByKey.values)
+    }
+
+    nonisolated private static func historyKey(for invocation: SkillInvocation) -> String {
+        let timestampMilliseconds = Int64((invocation.timestamp.timeIntervalSince1970 * 1000).rounded())
+        return [
+            invocation.source.rawValue,
+            invocation.sessionId,
+            "\(timestampMilliseconds)",
+            invocation.skillName,
+            invocation.projectPath ?? "",
+        ].joined(separator: "::")
+    }
+
+    nonisolated private static func sortStats(_ stats: [SkillUsageStat]) -> [SkillUsageStat] {
+        stats.sorted { lhs, rhs in
+            if lhs.totalCount != rhs.totalCount {
+                return lhs.totalCount > rhs.totalCount
+            }
+
+            switch (lhs.lastUsedDate, rhs.lastUsedDate) {
+            case let (leftDate?, rightDate?) where leftDate != rightDate:
+                return leftDate > rightDate
+            default:
+                break
+            }
+
+            if lhs.source != rhs.source {
+                return lhs.source.rawValue < rhs.source.rawValue
+            }
+
+            return lhs.skillName.localizedCaseInsensitiveCompare(rhs.skillName) == .orderedAscending
+        }
+    }
+
+    // MARK: - Helpers
+
+    nonisolated private static func normalizedSkillName(_ value: String?, source: UsageSource) -> String? {
+        guard let value else { return nil }
+        let normalized = normalizeTriggerCommand(value, source: source)
+        guard !normalized.isEmpty else { return nil }
+
+        if source == .codexCLI, !isLikelyCodexSkillIdentifier(normalized) {
+            return nil
+        }
+
+        return normalized
+    }
+
+    nonisolated static func normalizeTriggerCommand(_ triggerCommand: String, source: UsageSource) -> String {
+        let trimmed = triggerCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch source {
+        case .claudeCode:
+            if trimmed.hasPrefix("/") {
+                return String(trimmed.dropFirst())
+            }
+            return trimmed
+        case .codexCLI:
+            if trimmed.hasPrefix("$") {
+                return String(trimmed.dropFirst())
+            }
+            return trimmed
+        case .pi:
+            // Skill rows carry "/skill:<name>"; session markers carry the bare name.
+            if trimmed.hasPrefix("/skill:") {
+                return String(trimmed.dropFirst("/skill:".count))
+            }
+            return trimmed
+        }
+    }
+
+    nonisolated static func statsKey(for skillName: String, source: UsageSource) -> String {
+        "\(source.rawValue)::\(skillName)"
+    }
+
+    nonisolated static func source(for skillSource: SkillSource) -> UsageSource {
+        switch skillSource {
+        case .claudeCode:
+            return .claudeCode
+        case .codexCLI:
+            return .codexCLI
+        case .pi, .workbuddy:
+            return .pi
+        }
+    }
+
+    nonisolated private static func isLikelyCodexSkillIdentifier(_ value: String) -> Bool {
+        value == value.lowercased()
+            && value.contains(where: \.isLetter)
+            && value.allSatisfy(isSkillNameCharacter)
+    }
+
+    // MARK: - Cache I/O
+
+    nonisolated private func loadCache() async -> UsageCache {
+        let url = cacheURL
+        guard let data = try? Data(contentsOf: url) else { return UsageCache() }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = iso8601WithFractional.date(from: string) { return date }
+            if let date = iso8601Plain.date(from: string) { return date }
+            return Date.distantPast
+        }
+        guard var cache = try? decoder.decode(UsageCache.self, from: data) else {
+            return UsageCache(schemaVersion: usageCacheSchemaVersion)
+        }
+
+        if cache.schemaVersion != usageCacheSchemaVersion {
+            cache.schemaVersion = usageCacheSchemaVersion
+            cache.parsedFiles = cache.parsedFiles.filter { !Self.shouldReparseForUsageSchemaUpgrade($0.key) }
+        }
+
+        return cache
+    }
+
+    nonisolated private func loadHistory() async -> UsageHistoryStore {
+        let url = historyURL
+        guard let data = try? Data(contentsOf: url) else {
+            return UsageHistoryStore(schemaVersion: usageHistorySchemaVersion)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = iso8601WithFractional.date(from: string) { return date }
+            if let date = iso8601Plain.date(from: string) { return date }
+            return Date.distantPast
+        }
+
+        guard var history = try? decoder.decode(UsageHistoryStore.self, from: data) else {
+            return UsageHistoryStore(schemaVersion: usageHistorySchemaVersion)
+        }
+
+        history.schemaVersion = usageHistorySchemaVersion
+        return history
+    }
+
+    nonisolated private static func shouldReparseForUsageSchemaUpgrade(_ path: String) -> Bool {
+        path.contains("/.codex/sessions/") || path.hasSuffix("/.codex/history.jsonl")
+    }
+
+    nonisolated private static func cacheDate(_ cachedDate: Date, matches fileDate: Date) -> Bool {
+        abs(cachedDate.timeIntervalSince(fileDate)) < 0.01
+    }
+
+    nonisolated private func saveCache(_ cache: UsageCache) async {
+        let url = cacheURL
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(iso8601WithFractional.string(from: date))
+        }
+        guard let data = try? encoder.encode(cache) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    nonisolated private func saveHistory(_ history: UsageHistoryStore) async {
+        let url = historyURL
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(iso8601WithFractional.string(from: date))
+        }
+        guard let data = try? encoder.encode(history) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
+// MARK: - Claude Decode Structs
+
+private struct SessionLine: Decodable {
+    let type: String?
+    let timestamp: Date?
+    let sessionId: String?
+    let message: SessionMessage?
+}
+
+private struct SessionMessage: Decodable {
+    let content: [ContentBlock]?
+}
+
+private struct ContentBlock: Decodable {
+    let type: String?
+    let name: String?
+    let text: String?
+    let input: SkillInput?
+}
+
+private struct SkillInput: Decodable {
+    let skill: String?
+    let args: String?
+}
+
+// MARK: - Pi Decode Structs
+
+private struct PiSessionLine: Decodable {
+    let type: String?
+    let timestamp: Date?
+    // Present on the leading "session" entry only.
+    let id: String?
+    let cwd: String?
+    let message: PiSessionMessage?
+}
+
+private struct PiSessionMessage: Decodable {
+    let role: String?
+    let content: [PiContentBlock]?
+}
+
+private struct PiContentBlock: Decodable {
+    let type: String?
+    let text: String?
+}
+
+// MARK: - Codex Decode Structs
+
+private struct CodexHistoryLine: Decodable {
+    let sessionId: String
+    let ts: Int64
+    let text: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case ts
+        case text
+    }
+}
+
+private struct CodexRolloutLine: Decodable {
+    let timestamp: Date?
+    let type: String?
+    let payload: CodexRolloutPayload?
+}
+
+private struct CodexRolloutPayload: Decodable {
+    let id: String?
+    let originator: String?
+    let cwd: String?
+    let type: String?
+    let role: String?
+    let content: [CodexRolloutContent]?
+}
+
+private struct CodexRolloutContent: Decodable {
+    let text: String?
+}
+
+private struct CodexSkillCandidate {
+    let skillName: String
+    let timestamp: Date
+    let isExplicitTrigger: Bool
+}
