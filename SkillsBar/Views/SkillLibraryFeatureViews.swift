@@ -666,6 +666,10 @@ struct WorkflowLibraryView: View {
         .background(Color.primary.opacity(0.035))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 12)
+        .onAppear {
+            if selection.hasPrefix("custom:") && selectedCollection == nil { selection = "all" }
+            categoryName = selectedCollection?.name ?? ""
+        }
         .onChange(of: selection) { _, _ in
             isAddingSkills = selectedCollection?.skillPaths.isEmpty ?? false
             categoryName = selectedCollection?.name ?? ""
